@@ -1,7 +1,8 @@
 import pyautogui
 import numpy as np
+from config import Min_speed,Max_speed,Speed_mod
 
-def move_mouse(delta, positional_modifier=1000, speed_mod=0.5, min_speed=0.2, max_speed=3.0):
+def move_mouse(delta, positional_modifier=1000, speed_mod=Speed_mod, min_speed=Min_speed, max_speed=Max_speed):
     """
     Move the mouse cursor based on wrist delta + roll-based speed scaling.
 

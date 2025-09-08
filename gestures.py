@@ -129,6 +129,41 @@ def compute_hand_roll(landmarks, handedness):
 
     return roll_deg
 
+def count_pinch_fingers(landmarks, pinch_threshold=0.05):
+    """
+    Count how many fingers are "pinched" with the thumb.
+
+    Parameters:
+        landmarks: list of 21 MediaPipe landmarks
+        pinch_threshold: normalized distance threshold for detecting pinch (0-1, relative to image)
+
+    Returns:
+        pinch_count: int, number of fingers pinched with thumb
+    """
+    thumb_tip = np.array([landmarks[4].x, landmarks[4].y])
+    fingers_tips = [landmarks[8], landmarks[12], landmarks[16], landmarks[20]]  # index, middle, ring, pinky
+
+    pinch_count = 0
+    for tip in fingers_tips:
+        finger_tip = np.array([tip.x, tip.y])
+        distance = np.linalg.norm(finger_tip - thumb_tip)
+        if distance < pinch_threshold:
+            pinch_count += 1
+
+    return pinch_count
+
+def speed_from_fingers(num_fingers, max_fingers=4):
+    """
+    Map finger count (0..4) to speed_mod (0..1)
+    """
+    return np.clip(num_fingers / max_fingers, 0, 1)
+
+def speed_from_fingers(num_fingers, max_fingers=4):
+    """
+    Map finger count (0..4) to speed_mod (0..1)
+    """
+    return np.clip(num_fingers / max_fingers, 0, 1)
+
 _prev_wrist = None
 
 def wrist_movement(landmarks, handedness):
@@ -170,9 +205,7 @@ def control_mouse_with_left_hand(landmarks, handedness):
         return
 
     # --- 2. Compute roll angle and normalize ---
-    roll_angle = compute_hand_roll(landmarks,handedness)  # degrees
-    roll_abs = abs(roll_angle)  # ignore direction
-    speed_mod = np.clip(roll_abs / 180.0, 0.0, 1.0)  # normalize 0-180 → 0-1
+    speed_mod = speed_from_fingers(count_pinch_fingers(landmarks))
 
     # --- 3. Call move_mouse ---
     move_mouse(delta, positional_modifier=1000, speed_mod=speed_mod,
