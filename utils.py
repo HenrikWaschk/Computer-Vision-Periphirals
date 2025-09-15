@@ -1,8 +1,17 @@
 import pyautogui
 import numpy as np
-from config import Min_speed,Max_speed,Speed_mod
+from config import Min_speed,Max_speed,Speed_mod,Threshold,Alpha_ema_fps
 
-def move_mouse(delta, positional_modifier=1000, speed_mod=Speed_mod, min_speed=Min_speed, max_speed=Max_speed):
+framerate = 0
+
+def calculate_FPS_with_EMA(time):
+    try:
+        fps = 1/time * Alpha_ema_fps + framerate * (1-Alpha_ema_fps)
+    except ZeroDivisionError:
+        return framerate
+    return fps
+
+def move_mouse(delta, positional_modifier=10, speed_mod=Speed_mod, min_speed=Min_speed, max_speed=Max_speed,threshold=Threshold):
     """
     Move the mouse cursor based on wrist delta + roll-based speed scaling.
 
@@ -15,9 +24,13 @@ def move_mouse(delta, positional_modifier=1000, speed_mod=Speed_mod, min_speed=M
     """
     if delta is None:
         return
+    size = np.linalg.norm(delta)
+    delta = delta / size
+    if size < threshold:
+        return
 
     # Scale delta by position modifier
-    dx, dy = delta * positional_modifier
+    dx, dy = delta * positional_modifier * (size - threshold)
 
     # Map speed_mod (0-1) into [min_speed, max_speed]
     speed = min_speed + (max_speed - min_speed) * np.clip(speed_mod, 0, 1)
@@ -27,4 +40,7 @@ def move_mouse(delta, positional_modifier=1000, speed_mod=Speed_mod, min_speed=M
     dy *= speed
 
     # Move mouse relative to current position
-    pyautogui.moveRel(dx, dy, duration=0)
+    try:
+        pyautogui.moveRel(dx, dy, duration= 1/framerate)
+    except ZeroDivisionError:
+        pyautogui.moveRel(dx, dy, duration=0)

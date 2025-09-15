@@ -4,6 +4,53 @@ from utils import move_mouse
 # MCP joints we’ll use to define the hand’s forward direction
 _MCP_IDXS = [5, 9, 13, 17]
 
+#Hand Arithmatic
+def calculate_landmark_delta_with_z(landmark_1,landmark_2):
+    dx = landmark_1.x - landmark_2.x
+    dy = landmark_1.y - landmark_2.y
+    dz = landmark_1.z - landmark_2.z
+    delta = np.array([dx, dy, dz])
+    return delta
+
+def calculate_abs_landmark_delta_with_z(landmark_1,landmark_2):
+    dx = abs(landmark_1.x - landmark_2.x)
+    dy = abs(landmark_1.y - landmark_2.y)
+    dz = abs(landmark_1.z - landmark_2.z)
+    delta = np.array([dx, dy, dz])
+    return delta
+
+def calculate_palmsize(landmarks):
+    #In this function the size is calculated by averaging the vector length of every MCP to wrist and
+    # the index finger MCP to the pinky MCP
+    pairs = [[0,5],[0,9],[0,13],[0,17],[5,17]]
+    lengths = []
+    for pair in pairs:
+        lengths.append(calculate_abs_landmark_delta_with_z(landmarks.landmark[pair[0]],landmarks.landmark[pair[1]]))
+    size = 0
+    for length in lengths:
+        size += np.linalg.norm(length)
+    size = size/len(lengths)
+    if size == 0:
+        size = 0.15
+    return size
+
+
+#fingerpositions utils
+def calculate_average_index_vector(landmarks):
+    pairs = [[5,6],[5,7],[5,8]]
+    deltas = []
+    for pair in pairs:
+        deltas.append(calculate_landmark_delta_with_z(landmarks.landmark[pair[0]], landmarks.landmark[pair[1]]))
+    average_delta = [0,0]
+    counter = 1
+    for delta in deltas:
+        average_delta[0] += delta[0] * len(pairs)/counter
+        average_delta[1] += delta[1] * len(pairs)/counter
+        counter += 1
+    average_delta[0] = average_delta[0] / 3
+    average_delta[1] = average_delta[1] / 3
+    return average_delta
+
 def _avg_forward_vec_xy(landmarks):
     """
     Average 2D (x,y) vector from wrist to MCPs. This approximates the hand's
@@ -210,3 +257,18 @@ def control_mouse_with_left_hand(landmarks, handedness):
     # --- 3. Call move_mouse ---
     move_mouse(delta, positional_modifier=1000, speed_mod=speed_mod,
                min_speed=0.2, max_speed=3.0)
+
+def control_mouse_with_right_hand(landmarks, handedness):
+    label = handedness.classification[0].label
+    if label != "Right":
+        return
+    size = calculate_palmsize(landmarks)
+    index_vector = calculate_average_index_vector(landmarks)
+    index_vector[0] = -index_vector[0] / size
+    index_vector[1] = -index_vector[1] / size
+    move_mouse(np.array(index_vector))
+    return
+
+def process_gestures(landmarks,handedness):
+    control_mouse_with_right_hand(landmarks,handedness)
+    return

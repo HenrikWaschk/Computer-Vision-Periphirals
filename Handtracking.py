@@ -1,13 +1,14 @@
 import mediapipe as mp
 import numpy as np
 import cv2
-from config import Handcount, Alpha  # Alpha is smoothing factor (0 < Alpha <= 1)
-from gestures import compute_hand_yaw,compute_hand_roll,control_mouse_with_left_hand  # imported from gestures.py
+from config import Handcount, Alpha,Model_complexity,EMA_Smoothing  # Alpha is smoothing factor (0 < Alpha <= 1)
+from gestures import process_gestures,calculate_palmsize,calculate_average_index_vector
+from utils import framerate
 
 class HandTracker:
     HAND_COUNT = Handcount  # maximum number of hands to track
 
-    def __init__(self, model_complexity=0, detection_conf=0.7, tracking_conf=0.5):
+    def __init__(self, model_complexity=Model_complexity, detection_conf=0.5, tracking_conf=0.5):
         self.mp_hands = mp.solutions.hands
         self.mp_drawing = mp.solutions.drawing_utils
         self.hands = self.mp_hands.Hands(
@@ -15,7 +16,7 @@ class HandTracker:
             max_num_hands=self.HAND_COUNT,
             model_complexity=model_complexity,
             min_detection_confidence=detection_conf,
-            min_tracking_confidence=tracking_conf
+            min_tracking_confidence=tracking_conf,
         )
 
         # EMA buffers for each hand
@@ -41,14 +42,14 @@ class HandTracker:
             ):
                 label = handedness.classification[0].label
                 score = handedness.classification[0].score
+                if EMA_Smoothing:
+                    # Convert landmarks to list
+                    current_landmarks = [(lm.x, lm.y, lm.z) for lm in hand_landmarks.landmark]
+                    smoothed_landmarks = self.smooth_landmarks(current_landmarks, hand_index)
 
-                # Convert landmarks to list
-                current_landmarks = [(lm.x, lm.y, lm.z) for lm in hand_landmarks.landmark]
-                smoothed_landmarks = self.smooth_landmarks(current_landmarks, hand_index)
-
-                # Overwrite landmarks with smoothed values
-                for i, lm in enumerate(hand_landmarks.landmark):
-                    lm.x, lm.y, lm.z = smoothed_landmarks[i]
+                    # Overwrite landmarks with smoothed values
+                    for i, lm in enumerate(hand_landmarks.landmark):
+                        lm.x, lm.y, lm.z = smoothed_landmarks[i]
 
                 # Draw landmarks
                 self.mp_drawing.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
@@ -57,30 +58,17 @@ class HandTracker:
                 h, w, _ = frame.shape
                 x = int(hand_landmarks.landmark[0].x * w)
                 y = int(hand_landmarks.landmark[0].y * h)
-                cv2.putText(frame, f'{label} ({score:.2f})', (x, y - 10),
+                size = calculate_palmsize(hand_landmarks)
+                index_vector = calculate_average_index_vector(hand_landmarks)
+                index_vector[0] = index_vector[0] / size
+                index_vector[1] = index_vector[1] / size
+                cv2.putText(frame, f'{label} ({score:.2f}) ({index_vector[0]:.2f}) ({index_vector[1]:.2f})', (x, y - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-                # ---------- Compute yaw only for left hand ----------
-                gesture_info = self.get_gesture(hand_landmarks.landmark, handedness)
-                if gesture_info and "roll" in gesture_info:
-                    yaw_text = f"Roll: {gesture_info['roll']:.2f}°"
-                    cv2.putText(frame, yaw_text, (x, y + 20),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+                process_gestures(hand_landmarks,handedness)
 
         return results, frame
 
-    # ---------- Refactored get_gesture ----------
-    def get_gesture(self, landmarks, handedness):
-        """
-        Compute gestures / hand-based metrics.
-        Currently only computes yaw for LEFT hand.
-        """
-        label = handedness.classification[0].label
-        if label != "Left":
-            return None  # Only check left hand
-        control_mouse_with_left_hand(landmarks, handedness)
-        # Compute yaw using function from gestures.py
-        roll = compute_hand_roll(landmarks,handedness)
-        return {"roll": roll}
 
 
