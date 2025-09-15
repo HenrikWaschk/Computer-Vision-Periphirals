@@ -1,8 +1,12 @@
 import numpy as np
 from utils import move_mouse
+import mediapipe as mp
+from MouseMover import Mouse
 
 # MCP joints we’ll use to define the hand’s forward direction
 _MCP_IDXS = [5, 9, 13, 17]
+
+mouse_controller = Mouse()
 
 #Hand Arithmatic
 def calculate_landmark_delta_with_z(landmark_1,landmark_2):
@@ -16,23 +20,33 @@ def calculate_abs_landmark_delta_with_z(landmark_1,landmark_2):
     dx = abs(landmark_1.x - landmark_2.x)
     dy = abs(landmark_1.y - landmark_2.y)
     dz = abs(landmark_1.z - landmark_2.z)
-    delta = np.array([dx, dy, dz])
+    delta = np.array([dx, dy,dz])
     return delta
 
 def calculate_palmsize(landmarks):
     #In this function the size is calculated by averaging the vector length of every MCP to wrist and
     # the index finger MCP to the pinky MCP
-    pairs = [[0,5],[0,9],[0,13],[0,17],[5,17]]
-    lengths = []
-    for pair in pairs:
-        lengths.append(calculate_abs_landmark_delta_with_z(landmarks.landmark[pair[0]],landmarks.landmark[pair[1]]))
-    size = 0
-    for length in lengths:
-        size += np.linalg.norm(length)
-    size = size/len(lengths)
-    if size == 0:
+    pairs_height = [[0,5],[0,9],[0,13],[0,17]]
+    pairs_width = [[5,17]]
+    lengths_height = []
+    lengths_width = []
+    for pair in pairs_height:
+        lengths_height.append(calculate_abs_landmark_delta_with_z(landmarks.landmark[pair[0]],landmarks.landmark[pair[1]]))
+    for pair in pairs_width:
+        lengths_width.append(calculate_abs_landmark_delta_with_z(landmarks.landmark[pair[0]],landmarks.landmark[pair[1]]))
+    size_length = 0
+    size_width = 0
+    for length in lengths_height:
+        size_length += np.linalg.norm(length)
+    for length in lengths_width:
+        size_width += np.linalg.norm(length)
+    size_length = size_length/len(lengths_height)
+    size_width = size_width/len(lengths_width)
+    if size_length == 0:
         size = 0.15
-    return size
+    if size_width == 0:
+        size = 0.15
+    return size_length * (len(pairs_height)/(len(pairs_height) + len(pairs_width))) + size_width * (len(pairs_width)/(len(pairs_height) + len(pairs_width)))
 
 
 #fingerpositions utils
@@ -258,17 +272,31 @@ def control_mouse_with_left_hand(landmarks, handedness):
     move_mouse(delta, positional_modifier=1000, speed_mod=speed_mod,
                min_speed=0.2, max_speed=3.0)
 
-def control_mouse_with_right_hand(landmarks, handedness):
+def control_mouse_with_right_hand(landmarks, handedness,handsize = 0):
     label = handedness.classification[0].label
     if label != "Right":
         return
-    size = calculate_palmsize(landmarks)
+    if handsize == 0:
+        handsize = calculate_palmsize(landmarks)
+    size = handsize
+    #print(handsize)
     index_vector = calculate_average_index_vector(landmarks)
     index_vector[0] = -index_vector[0] / size
-    index_vector[1] = -index_vector[1] / size
-    move_mouse(np.array(index_vector))
+    index_vector[1] = -index_vector[1] / size * (9/16) - 0.1
+    mouse_controller.move(np.array(index_vector))
     return
 
-def process_gestures(landmarks,handedness):
-    control_mouse_with_right_hand(landmarks,handedness)
+def process_click_right_hand(landmarks,handedness,handsize):
+    label = handedness.classification[0].label
+    if label != "Right":
+        return
+    if landmarks.landmark[4].y < landmarks.landmark[5].y:
+        mouse_controller.click(True)
+        return
+    mouse_controller.click(False)
+def process_gestures(landmarks,handedness,handsize):
+    #control_mouse_with_right_hand(landmarks,handedness,handsize)
+    process_click_right_hand(landmarks,handedness,handsize)
     return
+
+

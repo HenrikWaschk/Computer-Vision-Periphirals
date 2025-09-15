@@ -13,9 +13,6 @@ EMA_Smoothing = False
 Speed_mod=1
 Min_speed=0
 Max_speed=5.0
-Threshold=0.6
+Threshold=0.35
 pyautogui.FAILSAFE = False
 
-#Utils
-#0-1
-Alpha_ema_fps = 0.11
